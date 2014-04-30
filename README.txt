@@ -1,5 +1,5 @@
 Welcome to UNCA/NCSU Mechatronics Engineering Senior Design Students!!
--------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------
 Here is a guide brought to you by the 2014 Senior Design Team, to bring you up to speed on where we left off in the project.
 
 NOTE: all code should be fully commented, which hopefully makes it understandable.
@@ -38,7 +38,7 @@ Email:  bzschokk (at) alumni.unca
 	blzschok (at) alumni.ncsu
 
 
--------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------
 
 
                 ##################                
