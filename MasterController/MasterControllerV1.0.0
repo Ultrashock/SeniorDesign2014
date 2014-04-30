@@ -1,0 +1,199 @@
+
+// Senior Design Project: Electronic "Soft" Differential  
+//
+// UNCA-NCSU Senior Class (2014)
+//
+
+// Versions & Version Notes:
+//-------------------------------------------------------
+
+ /* v0.1.0  
+ * Wrote the code for analog input of potentiometer inputs for steering and throttle measurement.
+
+
+ * v0.1.1
+ * Added support for (Vex) motor encoders and modified structure 
+ * v1.0.0
+ * Ported the code over for Arduino Due and added throttle response functionality.
+ */
+
+// Header:  List of all included header files
+// ------------------------------------------------------
+//
+
+// Constants: Collection of all GLOBAL program constants
+// ------------------------------------------------------
+//
+
+int steeringPin = A0;
+int gasPin = A1;
+int RMotor = DAC0;
+int LMotor = DAC1;
+int encoderAPin1 = 22;
+int encoderAPin2 = 23;
+int encoderBPin1 = 24;
+int encoderBPin2 = 25;
+int RSpeed = 0;                  // Right Motor Voltage variable (called speed b/c speed is proportional to voltage at this level)
+int LSpeed = 0;                  // Left Motor Voltage variable....(^ same)
+int RPML = 0;
+int RPMR = 0;
+int Max = 0;
+int Lr = 1;  //Need to determine units and value for the length between rear wheels....
+
+
+// Control Variables: These variables control internal instances inside
+// the program such as the debug feature and data to serial out, as well as resolution for
+// DAC and the chosen control scheme.
+// -------------------------------------------------------------------
+//
+int Res = 10;              //Controls the analog I/O resolution (bits); ranges from 4-12 bits.
+int ControlScheme = 0;     // DO NOT SET TO ONE YET!!!  MISSING FUNCTION!!!!
+int data = 0;
+int debug = 1;
+int UsrIN = 1;
+int Encoders = 0;
+int Speeds = 1;
+
+// Functions: 
+// ------------------------------------------------------
+
+int maxVoltage(){
+  int i;
+  int j = 2;
+  for(i = 0; i < Res; i++){
+      j = j*2;
+  }
+
+  return j;
+}
+
+
+int readEncoder(int encoderPin1, int encoderPin2){
+  unsigned long time;
+  int n;
+  int pulse1;
+  int last;
+  
+  /* Send the function the encoder pins 1 & 2 (in the form pin1 is top 
+  *  and pin2 is bottom  with the red side facing you and holes to the top 
+  *  of the encoder.
+  *  Reads encoder for a quarter of a second and returns the measurement in RPM.
+  *  Clockwise rotation is defined 
+  */
+  
+  time = millis();
+    n = 0;
+    while (millis() < (time + 250)){
+      pulse1 = digitalRead(encoderPin1);
+       if ((last == LOW) && (pulse1 == HIGH)) {
+         if (digitalRead(encoderPin2) == LOW) {
+               if(debug){Serial.println("CCW");}
+           n--;
+         } else {
+               if(debug){Serial.println("CW");}
+           n++;
+         }
+       } 
+       last = pulse1;
+    }
+        if(debug || data){
+          Serial.print("Pulses: ");
+          Serial.println(n);
+        }
+    n = ((n*4)*60)/90;                       // This is the conversion from (pulses/quarterSecond) to RPM
+        if(debug || data){
+          Serial.print("RPM");
+          Serial.println(n);
+        }
+    return n;
+}
+
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// Setup:  Things to only be run once
+// ------------------------------------------------------
+
+void setup(){
+  Serial.begin(9600);
+  pinMode(encoderAPin1,INPUT);
+  pinMode(encoderAPin2,INPUT);
+  pinMode(encoderBPin1,INPUT);
+  pinMode(encoderBPin2,INPUT);
+  Max = maxVoltage();
+}
+
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// Main: Things to be infinitely looped
+// ------------------------------------------------------
+
+void loop(){
+  int PTM, PSM;
+  float PT, PS;
+  int IV, OV;
+  float Ri;  //Need to determine units and type for innermost radius.... is float really the best??
+  
+  PTM = Max;  //Max throttle voltage (subject to change per-physical sensor output capabilities)
+  PSM = Max/2;   //Mid point for steering column (subject to change based on steering sensor positioning)
+  
+  analogReadResolution(Res);
+  int Gas = analogRead(gasPin);
+  analogReadResolution(Res);
+  int Steering = analogRead(steeringPin);
+  if((debug || data) && UsrIN){  
+    Serial.print("Gas: ");                            //Debug Statements ~ visual data
+    Serial.println(Gas);
+    Serial.print("Steering");
+    Serial.println(Steering);
+  }
+  
+  PT = Gas/PTM;    
+  PS = (Steering-PSM)/PSM;  //Normalizes the steering angle as a percentage.
+  PS = abs(PS);
+  
+  //RPML = readEncoder(encoderAPin1, encoderAPin2);
+  //RPMR = readEncoder(encoderBPin1, encoderBPin2);
+  /*if((debug || data) && Encoders){  
+    Serial.print("RPM Left Wheel");                            //Debug Statements ~ visual data
+    Serial.println(RPML);
+    Serial.print("RPM Right Wheel");
+    Serial.println(RPMR);
+  }*/
+  //CONTROL CODE GOES HERE
+  if(ControlScheme){
+      //Open loop ADVANCED   NOT VALID UNTIL FUNCTION TO OBTAIN Ri IS WRITTEN!!!!!!!!!
+      IV = (2*Ri*PT*Max)/(2*Ri+Lr);
+      OV = (2*PT*Max)/(1+(Ri/(Ri+Lr)));
+      
+      if((Steering - PSM) < 0){
+       RSpeed = OV;
+       LSpeed = IV;   
+      } else {  
+        RSpeed = IV;
+        LSpeed = OV;
+      }
+      
+  } else {
+      //Open loop SIMPLE
+      /* This control law ignores all other input except the throttle.  It gives equal power to both wheels based
+       * on the user defined throttle percentage.
+       */
+      RSpeed = PT*Max;  
+      LSpeed = PT*Max; 
+  }
+  
+  
+  if((debug || data) && Speeds){
+    Serial.print("Left Motor Voltage ");                //Debug Statements ~ visual data
+    Serial.println(LSpeed);  
+    Serial.print("Right Motor Voltage");
+    Serial.println(RSpeed);
+  }
+  analogWriteResolution(Res);
+  analogWrite(LMotor, LSpeed);
+  analogWriteResolution(Res);
+  analogWrite(RMotor, RSpeed);
+  
+  if(debug || data){
+    delay(500);  //Delay for readability
+  }
+}

@@ -1,0 +1,10 @@
+\beamer@endinputifotherversion {3.33pt}
+\select@language {british}
+\beamer@sectionintoc {1}{Introduction}{2}{0}{1}
+\beamer@sectionintoc {2}{Mechanical}{8}{0}{2}
+\beamer@sectionintoc {3}{Electrical}{16}{0}{3}
+\beamer@sectionintoc {4}{Controls}{28}{0}{4}
+\beamer@sectionintoc {5}{Testing}{38}{0}{5}
+\beamer@sectionintoc {6}{Conclusion}{44}{0}{6}
+\beamer@sectionintoc {7}{Acknowledgments}{46}{0}{7}
+\beamer@sectionintoc {8}{Questions}{47}{0}{8}

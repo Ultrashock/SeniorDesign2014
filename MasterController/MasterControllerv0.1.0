@@ -1,0 +1,164 @@
+
+// Senior Design Project: Electronic "Soft" Differential  
+//
+// UNCA-NCSU Senior Class (2014)
+//
+
+// Versions & Version Notes:
+//-------------------------------------------------------
+/* Dakota Lazenby - Initial Code - 10.15.13
+ * v0.1.0  
+ * Wrote the code for analog input of potentiometer inputs for steering and throttle measurement.
+ */
+/* Dakota Lazenby - 10.17.13
+ * v0.1.1
+ * Added support for (Vex) motor encoders and modified structure 
+ */
+
+
+// Header:  List of all included header files
+// ------------------------------------------------------
+//
+
+// Constants: Collection of all program constants
+// ------------------------------------------------------
+//
+
+int steeringPin = A6;
+int gasPin = A7;
+int gasOutLSB = 52;
+int steeringOutLSB = 35;
+int encoderAPin1 = 22;
+int encoderAPin2 = 23;
+
+
+// Control Variables: These variables control internal instances inside
+// the program such as the debug feature and data to serial out.
+// -------------------------------------------------------------------
+//
+int data = 0;
+int debug = 1;
+
+// Functions: 
+// ------------------------------------------------------
+
+void analogOut(int number, int LSB){
+  /* Dakota Lazenby 10.15.13 */
+   int i;
+   int bin[10];
+   //Serial.println(number);
+   for(i=0; i<10; i++){
+     bin[i] = number % 2;
+    number = number/2;
+   //Serial.println(number); 
+   }
+   Serial.println(LSB);
+   if(LSB > 40){
+     for(i = 0; i < 10; i++){
+       digitalWrite(LSB, bin[i]);
+       LSB = LSB - 2;
+       //Serial.println(LSB);
+     }
+   } else {
+     for(i = 0; i<10; i++){
+       pinMode(LSB, bin[i]);
+       LSB = LSB + 2;
+       //Serial.println(LSB);
+     }
+   } 
+}
+
+int readEncoder(encoderPin1, encoderPin2){
+  unsigned long time;
+  int n;
+  int pulse1;
+  int last;
+  
+  /* Send the function the encoder pins 1 & 2 (in the form pin1 is top 
+  *  and pin2 is bottom  with the red side facing you and holes to the top 
+  *  of the encoder.
+  *  Reads encoder for a quarter of a second and returns the measurement in RPM.
+  *  Clockwise rotation is defined 
+  */
+  
+  time = millis();
+    n = 0;
+    while (millis() < (time + 250)){
+      pulse1 = digitalRead(encoderPin1);
+       if ((last == LOW) && (pulse1 == HIGH)) {
+         if (digitalRead(encoderPin2) == LOW) {
+               if(debug){Serial.println("CCW");}
+           n--;
+         } else {
+               if(debug){Serial.println("CW");}
+           n++;
+         }
+       } 
+       last = pulse1;
+    }
+        if(debug || data){
+          Serial.print("Pulses: ");
+          Serial.println(n);
+        }
+    n = ((n*4)*60)/90;                       // This is the conversion from (pulses/quarterSecond) to RPM
+        if(debug || data){
+          Serial.print("RPM");
+          Serial.println(n);
+        }
+    return n;
+}
+
+void initializeDAC(int LSB){
+  /* Dakota Lazenby 10.15.13*/
+   int i;
+   //Serial.println(LSB);
+   if(LSB > 40){
+     for(i = 0; i < 10; i++){
+       pinMode(LSB, OUTPUT);
+       LSB = LSB - 2;
+       //Serial.println(LSB);
+     }
+   } else {
+     for(i = 0; i < 10; i++){
+       pinMode(LSB, OUTPUT);
+       LSB = LSB + 2;
+       //Serial.println(LSB);
+     }
+   } 
+}
+
+// Setup:  Things to only be run once
+// ------------------------------------------------------
+
+void setup(){
+  Serial.begin(9600);
+  pinMode (encoderAPin1,INPUT);
+  pinMode (encoderAPin2,INPUT);
+  initializeDAC(gasOutLSB);
+  initializeDAC(steeringOutLSB);
+}
+
+// Main: Things to be infinitely looped
+// ------------------------------------------------------
+
+void loop(){
+  int Gas = analogRead(gasPin);
+  int Steering = analogRead(steeringPin);
+  if(debug || data){
+    Serial.print("Gas: ");                    //Debug Statements ~ visual data
+    Serial.println(Gas);
+    Serial.print("Steering");
+    Serial.println(Steering);
+  }
+  
+  /*  ANALOG OUT CODE  */
+  /* This code would be the interface between the arduino and the motor controllers */
+  //analogOut(Gas, gasOutLSB);
+  //analogOut(Steering, steeringOutLSB);
+  /* ----------------- */
+  RPM = readEncoder(encoderAPin1, encoderAPin2);
+  
+  if(debug || data){
+    delay(500);  //Delay for readability
+  }
+}

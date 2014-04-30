@@ -1,0 +1,259 @@
+/* A simple data logger for the Arduino analog pins with optional DS1307
+uses RTClib from https://github.com/adafruit/RTClib
+Last edited on 3/7/14 - it works with throttle setup
+Next step is to insert Dakota's DAC and steering code as indicated in comments below and test with infinite
+turn radius (straight steering angle)
+This code saves a CSV file with time (milliseconds), Steering and/or accelerator, voltage output read from multimeter
+and 10 samples of analog reads to a removable SD card.
+You Must put micro SD card in larger card shell then into computer.
+!!!!!!!!!! IMPORTANT: Disable power to SD card breakout board before removing the SD card, 
+otherwise the file could be corrupted !!!!!!!!!!!!!!!!
+*/
+//--------------------------------------------------------
+
+#include <SdFat.h>  //Not a standard library - must download from zip file available at:
+//http://code.google.com/p/beta-lib/downloads/detail?name=SdFatBeta20130621.zip&can=2&q
+#include <SdFatUtil.h>  // define FreeRam()
+
+#define SD_CHIP_SELECT  SS  // SD chip select pin - may need to change to 10
+#define USE_DS1307       0  // set nonzero to use DS1307 RTC
+#define LOG_INTERVAL  1000  // mills between entries
+#define SENSOR_COUNT     2  // number of analog pins to log -- optional now
+#define ECHO_TO_SERIAL   1  // echo data to serial port if nonzero
+#define WAIT_TO_START    1  // Wait for serial input in setup()
+#define ADC_DELAY       10  // ADC delay for high impedence sensors
+
+//Global integer to store chosen input
+int analogPin = 10;
+int quit = 0;
+
+//Globals for analog reading:
+//int steering = A10;
+int throttle = A11;
+int steering = A10;
+int outOne = DAC0;
+int outTwo = DAC1;
+int Res = 10;
+int Speed = 0;
+int maxThrottle = 235;
+int minThrottle = 7;
+
+// file system object
+SdFat sd;
+
+// text file for logging
+ofstream logfile;
+
+// Serial print stream
+ArduinoOutStream cout(Serial);
+
+// buffer to format data - makes it eaiser to echo to Serial
+char buf[80];
+//------------------------------------------------------------------------------
+#if SENSOR_COUNT > 6
+#error SENSOR_COUNT too large
+#endif  // SENSOR_COUNT
+//------------------------------------------------------------------------------
+// store error strings in flash to save RAM
+#define error(s) sd.errorHalt_P(PSTR(s))
+//------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
+void setup() {
+  Serial.begin(9600);
+  while (!Serial){}  // wait for DUE
+  
+  // pstr stores strings in flash to save RAM
+  cout << endl << pstr("FreeRam: ") << FreeRam() << endl;
+
+#if WAIT_TO_START
+  cout << pstr("Type any character to start\n");
+  while (Serial.read() <= 0) {}
+  delay(400);  // catch Due reset problem
+#endif  // WAIT_TO_START
+
+
+  // initialize the SD card at SPI_HALF_SPEED to avoid bus errors with
+  if (!sd.begin(SD_CHIP_SELECT, SPI_HALF_SPEED)) sd.initErrorHalt();
+
+  // create a new file in root, the current working directory
+  char name[] = "TnRd3900.CSV";
+
+  for (uint8_t i = 0; i < 100; i++) {
+    name[6] = i/10 + '0';
+    name[7] = i%10 + '0';
+    if (sd.exists(name)) continue;
+    logfile.open(name);
+    break;
+  }
+  if (!logfile.is_open()) error("file.open");
+
+  cout << pstr("Logging to: ") << name << endl;
+ // cout << pstr("Type any character to stop\n\n");
+  
+  // format header in buffer
+  obufstream bout(buf, sizeof(buf));
+
+  bout << pstr("millis");
+
+  logfile << buf << endl;
+
+#if ECHO_TO_SERIAL
+  cout << buf << endl;
+#endif  // ECHO_TO_SERIAL
+}
+//------------------------------------------------------------------------------
+void loop() {
+   uint32_t m;
+   int c = 0;
+
+  // wait for time to be a multiple of interval
+  do {
+    m = millis();
+  } while (m % LOG_INTERVAL);
+
+  // use buffer stream to format line
+  obufstream bout(buf, sizeof(buf));
+
+  // start with time in millis
+  bout << m;
+
+  //Hallie's test code
+  if (quit!=1) {
+    //Asks user to choose which input is under test.  Serial data is alphanumeric and case sensitive.
+    cout << pstr("\nWhat are we testing?  \n For Steering type 'S'. \n To quit type 'Q'\n");
+    while (Serial.available() <= 0) {}  //Enter Dakota's code here??
+    char analogInput = Serial.read();
+    delay(50);
+    if(analogInput == 'S') {
+      cout << pstr("\nOK, Steering it is.  Type 1st digit of 3:\n");
+      //User must enter one digit of three at a time, followed by return.
+      while (Serial.available() <= 0) {}
+      char angle1 = Serial.read();
+      delay(50);
+      cout << pstr("\nType 2nd digit of 3:\n");
+      while (Serial.available() <= 0) {}
+      char angle2 = Serial.read();
+      delay(50);
+      cout << pstr("\nType 3rd digit of 3:\n");
+      while (Serial.available() <= 0) {}
+      char angle3 = Serial.read();
+      delay(50);
+      bout << pstr(",Steering,");
+      //Sends the angle as one 3-digit value to serial monitor and SD card file
+      bout << angle1;
+      bout << angle2;
+      bout << angle3;
+      // analogPin = A10;
+      delay(400);  // catch Due reset problem
+      cout << pstr("\nOK, Now measure the Turn radius in ft ft.in in/n.  Type 1st digit of 4:\n");
+      while (Serial.available() <= 0) {
+         Throttle_2_DAC();
+         delay(100);
+         c++;
+         int j = analogRead(steering);
+         delay(100);  //Delay 1/10 second to make enough time to get throttle response whilst taking samples.
+          if ((c > 0) && (c < 50)) {
+             bout << ',';
+             bout << j;  //Only take 50 samples.
+             Serial.print("analogRead = ");
+             Serial.println(j);
+          }
+          
+       }
+      c = 0;
+       // The idea being to wait for the voltage input while the code outputs DAC voltage we can measure.
+      char Turn_ft1 = Serial.read();
+      // Make sure throttle is at zero!
+          analogWrite(outOne, 0);
+          analogWrite(outTwo, 0);
+      delay(50);
+      cout << pstr("\nType Feet digit 2:\n");
+      while (Serial.available() <= 0) {}
+      char Turn_ft2 = Serial.read();
+      delay(50);
+      cout << pstr("\nType inches digit 1:\n");
+      while (Serial.available() <= 0) {}
+      char Turn_in1 = Serial.read();
+      delay(50);
+      cout << pstr("\nType inches digit 2:\n");
+      while (Serial.available() <= 0) {}
+      char Turn_in2 = Serial.read();
+      delay(50);
+      //3 digit voltage reading of DAC output (i.e. 3.14 would be 3, enter, 1, enter, 4, enter) 
+      //is saved as one value to the file and displayed on serial monitor.
+      bout << ',';
+      bout << Turn_ft1;
+      bout << Turn_ft2;
+      bout << '.' ;
+      bout << Turn_in1;
+      bout << Turn_in2;
+      bout << endl;
+    }
+   
+    else if (analogInput == 'Q') {
+      //when done, user must type Q to save the file and close out properly.  
+      quit = 1;
+      cout << pstr("\You're a quitter\n");
+      logfile.close();
+      cout << pstr("Done!");
+    }
+     delay(400);  // catch Due reset problem
+  
+  //End Hallie's test code
+ 
+  
+
+/*
+  // read analog pins and format data 
+  for (uint8_t ia = 0; ia < 10; ia++) {
+    int j = analogRead(analogPin);
+    delay(ADC_DELAY);  //Set ADC_DELAY to higher ammount of milliseconds for more time between samples.
+    bout << ',' << j;
+  }
+  bout << endl;
+  */
+  
+  
+    // log data and flush to SD
+  logfile << buf << flush;
+  
+       // check for error
+   if (!logfile) error("write data failed");  
+   //Always indicates an error - needs troubleshooting as of 2/3/14...
+
+
+#if ECHO_TO_SERIAL
+  cout << buf;
+#endif  // ECHO_TO_SERIAL
+
+  // don't log two points in the same millis
+ // if (m == millis()) delay(1);
+  
+  if (quit == 0) return;
+  
+  while (1);
+}
+
+}
+
+void Throttle_2_DAC() {
+  // reads the throttle input and outputs an analog voltage
+  analogReadResolution(Res);
+  int throttle_in = (analogRead(throttle));  //Correction by 36 
+  if (throttle_in < 0) throttle_in = 0;    //*****throttle_in must be non-negative!!!!!*****
+ // Serial.print("Throttle input: "); //Debug Statements ~ visual data
+ // Serial.println(throttle_in);
+  
+   Speed = map(throttle_in, minThrottle, maxThrottle, 0, 1023);
+   if (Speed < 0) Speed = 0;  //Just to be sure we don't send negative voltage to the Speed controllers!
+   else if (Speed > 500) Speed = 500; //This line is for testing and safety!
+    
+  analogWriteResolution(Res);
+  analogWrite(outOne, Speed);
+  analogWriteResolution(Res);
+  analogWrite(outTwo, Speed);
+ // Serial.print("DAC Output: "); //Debug Statements ~ visual data
+ // Serial.println(Speed);
+
+}

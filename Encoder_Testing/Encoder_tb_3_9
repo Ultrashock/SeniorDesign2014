@@ -1,0 +1,161 @@
+/* 
+uses RTClib from https://github.com/adafruit/RTClib
+Last edited on 3/9/14 -
+This code is to gather encoder data while running the motors at a constant speed.  The idea being to compare rpms (measured with 
+handheld programmer) with encoder output when given constant low to medium wheel speed.
+3-Channel optical encoders on each motor.
+Currently, motor attached to DAC1 is disabled.  See ramp_up_spd function to address.
+*/
+//--------------------------------------------------------
+
+#include <SdFat.h>  //Not a standard library - must download from zip file available at:
+//http://code.google.com/p/beta-lib/downloads/detail?name=SdFatBeta20130621.zip&can=2&q
+#include <SdFatUtil.h>  // define FreeRam()
+
+#define SD_CHIP_SELECT  SS  // SD chip select pin - may need to change to 10
+#define USE_DS1307       0  // set nonzero to use DS1307 RTC
+#define LOG_INTERVAL  1000  // mills between entries
+#define SENSOR_COUNT     2  // number of analog pins to log -- optional now
+#define ECHO_TO_SERIAL   1  // echo data to serial port if nonzero
+#define WAIT_TO_START    1  // Wait for serial input in setup()
+#define ADC_DELAY       10  // ADC delay for high impedence sensors
+
+//Global integer to store chosen input
+//int analogPin = 10;
+//int quit = 0;
+int PullDownPin = 7;  // Press Sensor pin
+int LEDPin = 8; //Red LED in digital pin 8 with resistor in series.
+
+//Globals for analog reading:
+int steering = A10;
+int throttle = A11;
+int outOne = DAC0;
+int outTwo = DAC1;
+int Res = 10;
+int Speed = 0;
+int maxThrottle = 670;
+int encoder1PinA = 25;
+int encoder1PinB = 29;
+int encoder1PinZ = 33;
+int encoder1Pos = 0;
+int encoder1PinALast = LOW;
+int RPM = 0;
+int val;
+int encoder2PinA = 23;
+int encoder2PinB = 27;
+int encoder2PinZ = 31;
+int u = 0; //For saving 10 samples of rpms before next line.
+int debug = 1;
+int data = 1;
+int n = LOW;
+
+// file system object
+SdFat sd;
+
+// text file for logging
+ofstream logfile;
+
+// Serial print stream
+ArduinoOutStream cout(Serial);
+
+// buffer to format data - makes it eaiser to echo to Serial
+char buf[80];
+//------------------------------------------------------------------------------
+#if SENSOR_COUNT > 6
+#error SENSOR_COUNT too large
+#endif  // SENSOR_COUNT
+//------------------------------------------------------------------------------
+// store error strings in flash to save RAM
+#define error(s) sd.errorHalt_P(PSTR(s))
+//------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
+void setup() {
+  Serial.begin(9600);
+  pinMode (encoder1PinA, INPUT);
+  pinMode (encoder1PinB, INPUT);
+  pinMode (encoder2PinA, INPUT);
+  pinMode (encoder2PinB, INPUT);
+  pinMode (encoder1PinZ, INPUT);
+  pinMode (encoder2PinZ, INPUT);
+ // pinMode(PullDownPin, INPUT);    // Pin 7 is connected to Press sensor
+ // digitalWrite(PullDownPin, HIGH); //Pin 7 is now high.  When pressed, pin & will be pulled LOW.
+//Sense to see if PullDownPin is low before proceeding with code.
+ // pinMode(LEDPin, OUTPUT);
+ // digitalWrite(LEDPin, HIGH); //LED indicator 
+while (!Serial){}  // wait for DUE
+
+
+#if WAIT_TO_START
+  delay(400);  // catch Due reset problem
+#endif  // WAIT_TO_START
+
+  
+  Ramp_up_speed(); //Ease the motors up to various throttle positions.
+
+
+}
+//------------------------------------------------------------------------------
+void loop() {
+
+   uint32_t m;
+   int Encoder_1_Spd, Encoder_2_Spd;
+  
+ 
+  //Insert read encoder code here************************************************************
+  Encoder_1_Spd = readEncoder(encoder1PinB, encoder1PinA, encoder1PinZ);
+  Serial.print("Encoder 1 Speed: ");
+  Serial.print(Encoder_1_Spd);
+
+  Encoder_2_Spd = readEncoder(encoder2PinA, encoder2PinB, encoder2PinZ);
+  Serial.print(" ...... Encoder 2 Speed: ");
+  Serial.println(Encoder_2_Spd);
+ 
+} //End of void loop
+
+void Ramp_up_speed() {
+  analogWrite(outOne, 0);
+  analogWrite(outTwo, 0);
+  Serial.println("Put the motors in gear.");
+  delay(5000);
+  for (int k = 0; k<150; k++) { 
+  analogWriteResolution(Res); // Do we need this?
+  analogWrite(outOne, k);
+  //   analogWriteResolution(Res);  // Do we need this?
+  //  analogWrite(outTwo, k);  // We can comment this out and test one at a time...
+  delay(50);
+  }
+
+}
+
+int readEncoder(int encoderPinA, int encoderPinB, int encoderPinZ){
+  int Z_Rev = 0;
+    uint32_t time=millis();
+   while(millis()<(time+125)){
+     
+   n = digitalRead(encoderPinA);
+   if ((encoder1PinALast == LOW) && (n == HIGH)) {
+     if (digitalRead(encoderPinB) == LOW) {
+       encoder1Pos--;
+     } else {
+       encoder1Pos++;
+     }
+   } 
+   encoder1PinALast = n;
+ }
+  RPM=((encoder1Pos*8)*60)/400;
+    if (RPM>500) {  //May need to adjust this number
+     // Serial.println("Encoder speed over 500 RPM");
+     long time1 = micros();     //Take a timestamp
+      while ((Z_Rev>=0)&&(Z_Rev<10)) {     // Turn 10 Revolutions
+          if ((digitalRead(encoderPinZ)) == LOW) {  //Test for high pulse
+            while ((digitalRead(encoderPinZ)) == LOW) {}  //Wait for a pulse
+               Z_Rev++;
+           } 
+       }
+       long time2 = micros()-time1;
+       RPM = Z_Rev*1000*1000*60/time2;
+    }
+ encoder1Pos=0; 
+ return(RPM);
+}
