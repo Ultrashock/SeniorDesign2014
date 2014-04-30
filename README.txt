@@ -1,4 +1,4 @@
-Welcome to UNCA/NCSU Mechatronics Engineering Senior Design Students!!
+Welcome to the end of UNCA/NCSU Mechatronics Engineering Senior Design Students!!
 -------------------------------------------------------------------------
 Here is a guide brought to you by the 2014 Senior Design Team, to bring you up to speed on where we left off in the project.
 
